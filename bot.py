@@ -126,9 +126,6 @@ class BillionsNetwork:
             mask_account = local[:3] + '*' * 3 + local[-3:]
             return f"{mask_account}@{domain}"
         
-        mask_account = account[:6] + '*' * 6 + account[-6:]
-        return mask_account
-        
     def print_question(self):
         while True:
             try:
@@ -150,6 +147,16 @@ class BillionsNetwork:
             except ValueError:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
     
+    async def check_connection(self, proxy=None):
+        connector = ProxyConnector.from_url(proxy) if proxy else None
+        try:
+            async with ClientSession(connector=connector, timeout=ClientTimeout(total=30)) as session:
+                async with session.get(url=self.BASE_API, headers={}) as response:
+                    response.raise_for_status()
+                    return True
+        except (Exception, ClientResponseError) as e:
+            return self.log(str(e))
+    
     async def user_data(self, session_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/me"
         headers = {
@@ -159,7 +166,7 @@ class BillionsNetwork:
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=300)) as session:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.get(url=url, headers=headers) as response:
                         response.raise_for_status()
                         return await response.json()
@@ -179,7 +186,7 @@ class BillionsNetwork:
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=300)) as session:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers) as response:
                         response.raise_for_status()
                         return await response.json()
@@ -188,33 +195,59 @@ class BillionsNetwork:
                     await asyncio.sleep(5)
                     continue
                 return None
-        
-    async def process_accounts(self, session_id: str, use_proxy: bool):
+            
+    async def process_check_connection(self, session_id: str, use_proxy: bool):
+        message = "Checking Connection, Wait..."
+        if use_proxy:
+            message = "Checking Proxy Connection, Wait..."
+
+        print(
+            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+            f"{Fore.YELLOW + Style.BRIGHT}{message}{Style.RESET_ALL}",
+            end="\r",
+            flush=True
+        )
+
         proxy = self.get_next_proxy_for_account(session_id) if use_proxy else None
 
-        user = None
-        while user is None:
+        is_valid = await self.check_connection(proxy)
+        if not is_valid:
+            self.log(
+                f"{Fore.CYAN+Style.BRIGHT}Proxy   :{Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
+                f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                f"{Fore.RED+Style.BRIGHT} Not 200 OK {Style.RESET_ALL}          "
+            )
+            return False
+        
+        self.log(
+            f"{Fore.CYAN+Style.BRIGHT}Proxy   :{Style.RESET_ALL}"
+            f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
+            f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+            f"{Fore.GREEN+Style.BRIGHT} 200 OK {Style.RESET_ALL}                  "
+        )
+
+        return True
+        
+    async def process_accounts(self, session_id: str, use_proxy: bool):
+        is_valid = await self.process_check_connection(session_id, use_proxy)
+        if is_valid:
+            proxy = self.get_next_proxy_for_account(session_id) if use_proxy else None
+
             user = await self.user_data(session_id, proxy)
             if not user:
                 self.log(
                     f"{Fore.CYAN + Style.BRIGHT}Status  :{Style.RESET_ALL}"
                     f"{Fore.RED + Style.BRIGHT} GET User Data Failed {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT} Retrying... {Style.RESET_ALL}"
                 )
-                await asyncio.sleep(5)
-                proxy = self.rotate_proxy_for_account(session_id) if use_proxy else None
-                continue
+                return
 
             email = user.get("email", "Unknown")
             power = user.get("power", 0)
 
             self.log(
-                f"{Fore.CYAN + Style.BRIGHT}Proxy   :{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-            )
-            self.log(
-                f"{Fore.CYAN + Style.BRIGHT}Email   :{Style.RESET_ALL}"
+                f"{Fore.CYAN + Style.BRIGHT}Account :{Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(email)} {Style.RESET_ALL}"
             )
             self.log(
@@ -231,7 +264,7 @@ class BillionsNetwork:
                         f"{Fore.GREEN + Style.BRIGHT} Claimed Successfully {Style.RESET_ALL}"
                         f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                         f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} 25 Power PTS {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}25 Power PTS{Style.RESET_ALL}"
                     )
                 else:
                     self.log(
@@ -250,7 +283,7 @@ class BillionsNetwork:
                             f"{Fore.GREEN + Style.BRIGHT} Claimed Successfully {Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} 25 Power PTS {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}25 Power PTS{Style.RESET_ALL}"
                         )
                     else:
                         self.log(
@@ -264,7 +297,7 @@ class BillionsNetwork:
                         f"{Fore.YELLOW + Style.BRIGHT} Not Time To Claim {Style.RESET_ALL}"
                         f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                         f"{Fore.CYAN + Style.BRIGHT} Claim At: {Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {next_daily_reward_wib} {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}{next_daily_reward_wib}{Style.RESET_ALL}"
                     )
 
     async def main(self):
@@ -294,9 +327,9 @@ class BillionsNetwork:
                     if session_id:
                         self.log(
                             f"{Fore.CYAN + Style.BRIGHT}{separator}[{Style.RESET_ALL}"
-                            f"{Fore.BLUE + Style.BRIGHT} {idx} {Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT}OF{Style.RESET_ALL}"
-                            f"{Fore.BLUE + Style.BRIGHT} {len(session_ids)} {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {idx} {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Of{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {len(session_ids)} {Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT}]{separator}{Style.RESET_ALL}"
                         )
                         await self.process_accounts(session_id, use_proxy)
@@ -322,6 +355,7 @@ class BillionsNetwork:
             return
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
+            raise e
 
 if __name__ == "__main__":
     try:
