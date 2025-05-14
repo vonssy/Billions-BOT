@@ -7,7 +7,7 @@ from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from datetime import datetime, timezone
 from colorama import *
-import asyncio, os, pytz
+import asyncio, os, re, pytz
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -106,6 +106,19 @@ class BillionsNetwork:
         self.account_proxies[token] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
+    
+    def normalize_iso_format(self, next_daily_reward: str):
+        date_str = next_daily_reward.replace("Z", "+00:00")
+
+        match = re.match(r"(.*\.\d{1,6})(\+00:00)", date_str)
+        if match:
+            timestamp, offset = match.groups()
+            if '.' in timestamp:
+                seconds, micros = timestamp.split('.')
+                micros = micros.ljust(6, '0')
+                date_str = f"{seconds}.{micros}{offset}"
+
+        return datetime.fromisoformat(date_str)
     
     def mask_account(self, account):
         if "@" in account:
@@ -227,7 +240,7 @@ class BillionsNetwork:
                     )
             else:
                 utc_now = datetime.now(timezone.utc)
-                next_daily_reward_utc = datetime.fromisoformat(next_daily_reward.replace("Z", "+00:00"))
+                next_daily_reward_utc = self.normalize_iso_format(next_daily_reward)
 
                 if utc_now >= next_daily_reward_utc:
                     claim = await self.claim_daily_reward(session_id, proxy)
