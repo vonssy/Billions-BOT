@@ -155,7 +155,7 @@ class BillionsNetwork:
                     response.raise_for_status()
                     return True
         except (Exception, ClientResponseError) as e:
-            return self.log(str(e))
+            return None
     
     async def user_data(self, session_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/me"
