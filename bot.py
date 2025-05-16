@@ -198,7 +198,7 @@ class BillionsNetwork:
         connector = ProxyConnector.from_url(proxy) if proxy else None
         try:
             async with ClientSession(connector=connector, timeout=ClientTimeout(total=30)) as session:
-                async with session.get(url="https://unich.com", headers={}) as response:
+                async with session.get(url=self.BASE_API, headers={}) as response:
                     response.raise_for_status()
                     return True
         except (Exception, ClientResponseError) as e:
