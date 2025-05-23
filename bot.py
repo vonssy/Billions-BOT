@@ -157,7 +157,7 @@ class BillionsNetwork:
             mask_account = local[:3] + '*' * 3 + local[-3:]
             return f"{mask_account}@{domain}"
         
-        mask_account = local[:6] + '*' * 6 + local[-6:]
+        mask_account = account[:6] + '*' * 6 + account[-6:]
         return mask_account
         
     def print_question(self):
