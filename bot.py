@@ -181,12 +181,14 @@ class BillionsNetwork:
                     response.raise_for_status()
                     return True
         except (Exception, ClientResponseError) as e:
-            return self.log(
+            self.log(
                 f"{Fore.CYAN+Style.BRIGHT}Status  :{Style.RESET_ALL}"
                 f"{Fore.RED+Style.BRIGHT} Connection Not 200 OK {Style.RESET_ALL}"
                 f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                 f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
             )
+
+        return None
     
     async def user_data(self, session_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/me"
@@ -206,12 +208,14 @@ class BillionsNetwork:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.log(
+                self.log(
                     f"{Fore.CYAN+Style.BRIGHT}Error   :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} GET Check-In Status Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
+
+        return None
     
     async def claim_daily_reward(self, session_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/claim-daily-reward"
@@ -232,12 +236,14 @@ class BillionsNetwork:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.log(
+                self.log(
                     f"{Fore.CYAN+Style.BRIGHT}Error   :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} Check-In Not Claimed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
+
+        return None
             
     async def process_check_connection(self, session_id: str, use_proxy: bool, rotate_proxy: bool):
         while True:
