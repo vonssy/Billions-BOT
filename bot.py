@@ -1,13 +1,14 @@
 from aiohttp import (
     ClientResponseError,
     ClientSession,
-    ClientTimeout
+    ClientTimeout,
+    BasicAuth
 )
 from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from datetime import datetime, timezone
 from colorama import *
-import asyncio, time, json, base64, os, re, pytz
+import asyncio, base64, time, json, re, os, pytz
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -41,7 +42,7 @@ class BillionsNetwork:
     def welcome(self):
         print(
             f"""
-        {Fore.GREEN + Style.BRIGHT}Auto Claim {Fore.BLUE + Style.BRIGHT}Billions Network - BOT
+        {Fore.GREEN + Style.BRIGHT}Billions Network {Fore.BLUE + Style.BRIGHT}Auto BOT
             """
             f"""
         {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
@@ -58,7 +59,7 @@ class BillionsNetwork:
         try:
             if use_proxy_choice == 1:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text") as response:
+                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/http.txt") as response:
                         response.raise_for_status()
                         content = await response.text()
                         with open(filename, 'w') as f:
@@ -90,22 +91,42 @@ class BillionsNetwork:
             return proxies
         return f"http://{proxies}"
 
-    def get_next_proxy_for_account(self, token):
-        if token not in self.account_proxies:
+    def get_next_proxy_for_account(self, account):
+        if account not in self.account_proxies:
             if not self.proxies:
                 return None
             proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-            self.account_proxies[token] = proxy
+            self.account_proxies[account] = proxy
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return self.account_proxies[token]
+        return self.account_proxies[account]
 
-    def rotate_proxy_for_account(self, token):
+    def rotate_proxy_for_account(self, account):
         if not self.proxies:
             return None
         proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-        self.account_proxies[token] = proxy
+        self.account_proxies[account] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
+    
+    def build_proxy_config(self, proxy=None):
+        if not proxy:
+            return None, None, None
+
+        if proxy.startswith("socks"):
+            connector = ProxyConnector.from_url(proxy)
+            return connector, None, None
+
+        elif proxy.startswith("http"):
+            match = re.match(r"http://(.*?):(.*?)@(.*)", proxy)
+            if match:
+                username, password, host_port = match.groups()
+                clean_url = f"http://{host_port}"
+                auth = BasicAuth(username, password)
+                return None, clean_url, auth
+            else:
+                return None, proxy, None
+
+        raise Exception("Unsupported Proxy Type.")
     
     def normalize_iso_format(self, next_daily_reward: str):
         date_str = next_daily_reward.replace("Z", "+00:00")
@@ -173,11 +194,11 @@ class BillionsNetwork:
 
         return choose, rotate
     
-    async def check_connection(self, proxy=None):
-        connector = ProxyConnector.from_url(proxy) if proxy else None
+    async def check_connection(self, proxy_url=None):
+        connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
         try:
             async with ClientSession(connector=connector, timeout=ClientTimeout(total=30)) as session:
-                async with session.get(url=self.BASE_API, headers={}, ssl=False) as response:
+                async with session.get(url="https://api.ipify.org?format=json", proxy=proxy, proxy_auth=proxy_auth) as response:
                     response.raise_for_status()
                     return True
         except (Exception, ClientResponseError) as e:
@@ -187,10 +208,10 @@ class BillionsNetwork:
                 f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                 f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
             )
-
+        
         return None
     
-    async def user_data(self, session_id: str, proxy=None, retries=5):
+    async def user_data(self, session_id: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/me"
         headers = {
             **self.headers,
@@ -198,10 +219,10 @@ class BillionsNetwork:
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers, ssl=False) as response:
+                    async with session.get(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -209,15 +230,15 @@ class BillionsNetwork:
                     await asyncio.sleep(5)
                     continue
                 self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Error   :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} GET Check-In Status Failed {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Account :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Fetch Data Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
 
         return None
     
-    async def claim_daily_reward(self, session_id: str, proxy=None, retries=5):
+    async def claim_daily_reward(self, session_id: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/claim-daily-reward"
         headers = {
             **self.headers,
@@ -226,10 +247,10 @@ class BillionsNetwork:
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, ssl=False) as response:
+                    async with session.post(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -237,8 +258,8 @@ class BillionsNetwork:
                     await asyncio.sleep(5)
                     continue
                 self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Error   :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} Check-In Not Claimed {Style.RESET_ALL}"
+                    f"{Fore.CYAN+Style.BRIGHT}Check-In:{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Not Claimed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
@@ -254,19 +275,13 @@ class BillionsNetwork:
             )
 
             is_valid = await self.check_connection(proxy)
-            if is_valid:
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Status  :{Style.RESET_ALL}"
-                    f"{Fore.GREEN+Style.BRIGHT} Connection 200 OK {Style.RESET_ALL}"
-                )
-                return True
-            
-            if rotate_proxy:
-                proxy = self.rotate_proxy_for_account(session_id)
-                await asyncio.sleep(5)
+            if not is_valid:
+                if rotate_proxy:
+                    proxy = self.rotate_proxy_for_account(session_id)
+
                 continue
 
-            return False
+            return True
         
     async def process_accounts(self, session_id: str, use_proxy: bool, rotate_proxy: bool):
         is_valid = await self.process_check_connection(session_id, use_proxy, rotate_proxy)
@@ -292,16 +307,14 @@ class BillionsNetwork:
             next_daily_reward = user.get("nextDailyRewardAt", None)
             if next_daily_reward is None:
                 claim = await self.claim_daily_reward(session_id, proxy)
-                if not claim:
-                    return
-                
-                self.log(
-                    f"{Fore.CYAN + Style.BRIGHT}Check-In:{Style.RESET_ALL}"
-                    f"{Fore.GREEN + Style.BRIGHT} Claimed Successfully {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}25 Power PTS{Style.RESET_ALL}"
-                )
+                if claim:
+                    self.log(
+                        f"{Fore.CYAN + Style.BRIGHT}Check-In:{Style.RESET_ALL}"
+                        f"{Fore.GREEN + Style.BRIGHT} Claimed Successfully {Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}25 Power PTS{Style.RESET_ALL}"
+                    )
                 
             else:
                 utc_now = datetime.now(timezone.utc)
@@ -309,6 +322,7 @@ class BillionsNetwork:
 
                 if utc_now < next_daily_reward_utc:
                     next_daily_reward_wib = next_daily_reward_utc.astimezone(wib).strftime('%x %X %Z')
+                    
                     self.log(
                         f"{Fore.CYAN + Style.BRIGHT}Check-In:{Style.RESET_ALL}"
                         f"{Fore.YELLOW + Style.BRIGHT} Not Time To Claim {Style.RESET_ALL}"
@@ -316,20 +330,17 @@ class BillionsNetwork:
                         f"{Fore.CYAN + Style.BRIGHT} Claim At: {Style.RESET_ALL}"
                         f"{Fore.WHITE + Style.BRIGHT}{next_daily_reward_wib}{Style.RESET_ALL}"
                     )
-                    return
                 
-                claim = await self.claim_daily_reward(session_id, proxy)
-                if not claim:
-                    return
-                    
-                self.log(
-                    f"{Fore.CYAN + Style.BRIGHT}Check-In:{Style.RESET_ALL}"
-                    f"{Fore.GREEN + Style.BRIGHT} Claimed Successfully {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}25 Power PTS{Style.RESET_ALL}"
-                )
-                    
+                else:
+                    claim = await self.claim_daily_reward(session_id, proxy)
+                    if claim:
+                        self.log(
+                            f"{Fore.CYAN + Style.BRIGHT}Check-In:{Style.RESET_ALL}"
+                            f"{Fore.GREEN + Style.BRIGHT} Claimed Successfully {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}25 Power PTS{Style.RESET_ALL}"
+                        )
 
     async def main(self):
         try:
@@ -367,7 +378,7 @@ class BillionsNetwork:
                         if not session_id.startswith("session_id="):
                             self.log(
                                 f"{Fore.CYAN + Style.BRIGHT}Status  :{Style.RESET_ALL}"
-                                f"{Fore.RED + Style.BRIGHT} Invalid Session Id {Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT} Invalid Session Id Format {Style.RESET_ALL}"
                             )
                             continue
 
